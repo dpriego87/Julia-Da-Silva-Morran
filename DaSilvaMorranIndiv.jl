@@ -182,6 +182,9 @@ for scen in 1:3
                     #selfing
                     # recombination between 2 genomes of individual
                     #print("start selfing\n")
+                    h_sample_2 = 2 * (h_sample_ind - 1) + rand(1:2) # sampling of 2nd hermaphrodite genome
+                    # THINK OF HOW to IGNORE recombination when you sample the SAME hermaphrodite genome twice, and HOW to SAVE the resulting picked genomes to the hostsnew array.
+                    # Recombination only makes sense when you sample different genomes
                     for j = 1:L-1
                         if(rand() <= r) # 0.5 chance at each locus to swap between pairs
                             if h_sample % 2 == 0    # swap with index before or after h_sample depending on which in individual was sampled
