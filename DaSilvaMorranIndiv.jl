@@ -150,7 +150,7 @@ for scen in 1:3
                     end
                 end =#
                 # index of sampled hermaphrodite
-                h_sample_ind = sample(findall(x -> x == 0, indiv_vector))
+                h_sample_ind = rand(findall(x -> x == 0, indiv_vector))
                 # index of sampled hermaphrodite genome
                 h_sample = 2 * (h_sample_ind - 1) + rand(1:2)
                 #print("finish h sample\n")
