@@ -3,6 +3,7 @@ using Statistics
 using CSV
 using DataFrames
 using Random
+using Distributions
 # parameters
 treatment = 0       # 0 - control 1 - evolution 2 - coevolution
 IL = 30             # num. of host interaction loci
@@ -72,86 +73,91 @@ for scen in 1:3
         if printc
             print("rep ", rep, "\n")
         end
-        hosts = zeros(Int, N, L)
-        indiv_vector = zeros(Int, Int(N/2))
-        for i = 1:Int(ceil(N*initfr)) # put inital recomb allele in with initfr freq.
-            indiv_vector[i] = 1
+        # Initialize host genomes
+        hosts = Array{Int}(undef, N, L)
+        n_indivs = round(Int,N/2)
+        n_males = round(Int, ceil(n_indivs * initfr))
+        indiv_vector = zeros(Int, n_indivs)
+        indiv_vector[1:n_males] .= 1 # set inital fraction of males to the same frequency of recomb allele 
+        shuffle!(indiv_vector)
+        # THINK of how would you do something similar but now to set the initial frequency of the recombination modifier allele, 
+        # then modify that code to only use sampling Bernoulli distribution, with bias parameter p=initfr
+        # See manual of Distributions library https://juliastats.org/Distributions.jl/stable/starting/
+        # .
+        # .
+        # hosts[:, 1] =  rand(Bernoulli(?),?)
+        if standing
+            hosts[:, 2:L] = rand(0:1, N, IL)
+        else
+            hosts[:, 2:L] .= 0 # wildtype allele state is 0
         end
-        shuffle(indiv_vector)
-        random_genomes = rand(Float64, Int(N/2))    # random number for inital freq of mutant allele
-        if(standing) # create standing variation
-            for i = 2:L
-                random_genomes = rand(Float64, Int(N/2))
-                for j = 1:Int(N/2)
-                    hosts[Int(round(random_genomes[j]*N, RoundDown)) + 1, i] = 1  # make random_genomes proportion of individuals have mutant alleles
-                end
-            end
-        end
-
         for i = 1:L     # each item in host1 is freq. of mutant allele at each locus, each item host0 is wild type allele freq. at each locus
             host1[i] = sum(hosts[:, i])/N
             host0[i] = 1.0 - host1[i]
         end
         # initialization of data collection structures
         gen = 1
-        genrecomb[gen, scen] += 2*sum(indiv_vector)/(N*nreps)         # add generation 0's recomb allele freq. to genrecomb
+        genrecomb[gen, scen] += host1[1] / nreps          # add generation 0's recomb allele freq. to genrecomb
         if genrecomb[gen,scen]>1 || genrecomb[gen,scen]<0
             error("Out of range value in genrecomb[$gen,$scen]")
         end
-        genrecombarr[gen, rep, scen] = 2*sum(indiv_vector)/N        # add generation 0's recomb allele freq. to genrecombarr
+        genrecombarr[gen, rep, scen] = host1[1]        # add generation 0's recomb allele freq. to genrecombarr
         hostMutantAlleleFreq[rep, gen, :] = host1  # store mutant allele freq. at generation 0
         # intitalize wild type allele at fixation in parasite population
         para0 .= 1
         para1 .= 0
 
         fix = false                 # reset fixation of recomb allele
+        iFixCount = zeros(Int, nreps, L)
         iPrevFix = zeros(Int, L)  # intitalize last fixed allele as 0
 
         for gen = 1:ngens # loop through generations
             #print("\n Gen #", gen, "\n")
             #print("Start of gen: ", sum(hosts[:, 1])/N, "\n")
+            w = ones(N) # intitalize individual fitnesses
             if treatment != 0
                 #for i = 2:L
                     @. w0[2:L] = 1 - s*para0  # wild type allele fitness
                     @. w1[2:L] = 1 - s*para1  # mutant allele fitness
                 #end
-                w = ones(N)          # intitalize individual fitnesses
                 for i = 1:N
                     for j = 2:L
                         w[i] = w[i] * ( w0[j] * ( 1 - hosts[i, j] ) + w1[j] * hosts[i, j] ) # calculate individual fitnesses
                     end
                 end
-            else
-                w = ones(N)
             end
             #@show maximum(w)
-            #for i = 2:L   # calculate parasite fitnesses
-                @. wp0 = 1.0 - s*host1[2:L]
-                @. wp1 = 1.0 - s*host0[2:L]
-            #end
-
+            # calculate parasite fitnesses
+            @. wp0 = 1.0 - s*host1[2:L]
+            @. wp1 = 1.0 - s*host0[2:L]
             # host reproduction and selection
             wMax = maximum(w)
-            for i = 1:N
-                w[i] = w[i] / wMax  # calculate relative fitnesses
-            end
+            #for i = 1:N
+                @. w = w / wMax   # calculate relative fitnesses
+            #end
             #print("started loop\n")
             #@show indiv_vector
-            freqm = 2*sum(indiv_vector[1:Int(N/2)])/N
-            temp_vector = zeros(Int, Int(N/2))
-            for i = 1:2:N
+            freqm = sum(indiv_vector)/n_indivs
+            temp_vector = zeros(Int, n_indivs)
+            for i = 1:2:N # we loop over every other genome 
+                ind_i = round(Int,ceil(i / 2))
+                #=
                 h_sample = 0        # index of sampled hermaphrodite
                 while h_sample == 0 # sample random hermaphrodite
                     tempindex = rand(1:N)
                     if(indiv_vector[Int(ceil(tempindex/2))] == 0)
                         h_sample = tempindex
                     end
-                end
+                end =#
+                # index of sampled hermaphrodite
+                h_sample_ind = sample(findall(x -> x == 0, indiv_vector))
+                # index of sampled hermaphrodite genome
+                h_sample = 2 * (h_sample_ind - 1) + rand(1:2)
                 #print("finish h sample\n")
                 if rand() < (freqm)       # freqm chance for outcrossing, otherwise selfing
                     #print("start outcrossing\n")
                     #print("btw freqm is ", freqm)
-                    m_sample = 0    # index of sampled male
+                    #=m_sample = 0    # index of sampled male
                     while m_sample == 0 # sample random male
                         #print("start outcrossing loop\n")
                         tempindex = rand(1:N)
@@ -159,16 +165,18 @@ for scen in 1:3
                             m_sample = tempindex
                         end
                         #print("finish outcrossing loop\n")
-                    end
+                    end =#
+                    # TO DO SOMETHING SIMILAR to hermaphrodite case, now with MALE genomes (state 1)
+                    m_sample = 
                     #print("finish m sample\n")
                     # outcrossing between sampled genomes
                     for j = 1:L-1
                         if(rand() <= r) # 0.5 chance at each locus to swap between pairs
                             hostsnew[i, j+1:L] = hosts[m_sample, j+1:L]
-                            hostsnew[i + 1, j+1:L] = hosts[h_sample, j+1:L]
+                            hostsnew[i+1, j+1:L] = hosts[h_sample, j+1:L]
                         end
                     end
-                    temp_vector[Int(ceil(i/2))] = Int(round(rand())) # 50/50 male or hermaphrodite individual
+                    temp_vector[ind_i] = rand(0:1) # 50/50 male or hermaphrodite individual
                     #print("finish outcrossing\n")
                 else
                     #selfing
@@ -185,9 +193,9 @@ for scen in 1:3
                         end
                     end
                     if(rand() <= pnd)   # pnd chance for male
-                        temp_vector[Int(ceil(i/2))] = 1
+                        temp_vector[ind_i] = 1
                     else
-                        temp_vector[Int(ceil(i/2))] = 0
+                        temp_vector[ind_i] = 0
                     end
                     #print("finish selfing\n")
                 end
@@ -232,10 +240,6 @@ for scen in 1:3
             #end
             #print("After recombination: ", sum(hosts[:, 1])/N, "\n")
             # parasites
-            #for i = 1:L-1   # calculate parasite fitness
-                @. wp0 = 1 - s*host1[2:L]
-                @. wp1 = 1 - s*host0[2:L]
-            #end
             if treatment == 2
                 for pgen = 1:npgens
                     #for i = 1:L-1
